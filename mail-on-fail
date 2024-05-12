@@ -1,0 +1,98 @@
+#! /usr/bin/env bash
+
+################################################################################
+# Option/Parameter parsing
+function usage {
+	if [ -n "$1" ] ; then
+		echo '*Error*:' "$1" >&2
+		echo >&2
+	fi
+	cat <<END >&2
+Usage: mail-on-fail --mailto <email> [--name <name>] executable args...
+
+--mailto : Output is sent to this email on failure
+--name   : The name to use in the email subject.
+           Will use $executable if omitted.
+--script : executable is considered a bash script
+           (for bash -c), not a filename.
+--help | -h        : Show usage help
+
+mail-on-fail assumes that this host has a working mail setup and that \`mail\` (from mailutils) works.
+
+To test:
+
+These will not send a mail:
+
+    mail-on-fail --mailto me@example.com --name 'Test ok' true
+    mail-on-fail --mailto me@example.com --name 'Test ok' --script "echo body"
+
+But this will send a mail:
+
+    mail-on-fail --mailto me@example.com --name 'Test fail' false
+    mail-on-fail --mailto me@example.com --name 'Test fail' --script "echo body ; exit 1"
+END
+	exit
+}
+
+OPTIONS=$(getopt -o h --long mailto:,name:,script,help -n $0 -- "$@")
+if [ $? != 0 ] ; then echo "Terminating..." >&2 ; exit 1 ; fi
+eval set -- "$OPTIONS"
+
+script=0
+
+while true; do
+    case "$1" in
+        --mailto ) mailto="$2"; shift 2 ;;
+        --name ) name="$2"; shift 2 ;;
+        --script ) script=1; shift ;;
+        -h | --help ) usage ;;
+        -- ) shift; break ;;
+        * ) break ;;
+    esac
+done
+
+if [ "$mailto" == "" ] ; then
+    usage "Need --mailto"
+fi
+
+if [ "$1" == "" ] ; then
+    usage "Need executable"
+fi
+
+if [ "$name" == "" ] ; then
+    name=$1
+fi
+
+# echo mailto: $mailto
+# echo name: $name
+# echo args: "$@"
+# exit
+
+# /Option/Parameter parsing
+################################################################################
+
+echo Running "$mailto" "$name"
+
+
+tmpfile=$(mktemp)
+trap "rm -f $tmpfile" EXIT
+
+set -o pipefail
+if [ $script == 1 ] ; then
+    command="$1"
+    shift
+    shift
+    bash -c "$command" -- "$@" 2>&1 | tee $tmpfile
+    exitcode=$?
+else
+    "$@" 2>&1 | tee $tmpfile
+    exitcode=$?
+fi
+
+if [ $exitcode != 0 ] ; then
+    message="Running $name failed with exitcode $exitcode"
+    echo $message
+    echo -e "$message\n\n$(cat $tmpfile)" > $tmpfile
+    mail -s "Running $name failed with exitcode $exitcode" "$mailto" < $tmpfile
+    exit $exitcode
+fi
