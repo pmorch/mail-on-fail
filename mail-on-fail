@@ -26,7 +26,7 @@ These will not send a mail:
     mail-on-fail --mailto me@example.com --name 'Test ok' true
     mail-on-fail --mailto me@example.com --name 'Test ok' --script "echo body"
 
-But this will send a mail:
+But these will send a mail:
 
     mail-on-fail --mailto me@example.com --name 'Test fail' false
     mail-on-fail --mailto me@example.com --name 'Test fail' --script "echo body ; exit 1"
